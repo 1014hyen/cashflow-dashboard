@@ -495,22 +495,16 @@ export default function Home() {
   const [collapsedSections, setCollapsedSections] = React.useState<Record<string, boolean>>({});
   const [selectedKpiMonthColIndex, setSelectedKpiMonthColIndex] = React.useState<number | null>(null);
   const [monthlyDataExpanded, setMonthlyDataExpanded] = React.useState(true);
-  const [rowRemarks, setRowRemarks] = React.useState<Record<string, string>>(() => {
-    try {
-      const saved = localStorage.getItem("cashflow_rowRemarks");
-      return saved ? (JSON.parse(saved) as Record<string, string>) : {};
-    } catch { return {}; }
-  });
+  const [rowRemarks, setRowRemarks] = React.useState<Record<string, string>>({});
   const [isRemarksEditMode, setIsRemarksEditMode] = React.useState(false);
   const [simSelectedMonthColIndex, setSimSelectedMonthColIndex] = React.useState<number | null>(null);
   const [simMultiplier, setSimMultiplier] = React.useState(100);
-  const [summaryMemo, setSummaryMemo] = React.useState(() => {
-    try { return localStorage.getItem("cashflow_summaryMemo") ?? ""; }
-    catch { return ""; }
-  });
+  const [summaryMemo, setSummaryMemo] = React.useState("");
   const [isSummaryMemoEditMode, setIsSummaryMemoEditMode] = React.useState(false);
+  // memos.json 기준 월 추적 (UI 편집 vs 파일 구분용)
+  const [memoBaseMonth, setMemoBaseMonth] = React.useState<string | null>(null);
 
-  // 메모 변경 시 localStorage에 저장
+  // 메모 변경 시 localStorage에 임시 저장
   React.useEffect(() => {
     try { localStorage.setItem("cashflow_summaryMemo", summaryMemo); } catch { /* noop */ }
   }, [summaryMemo]);
@@ -518,6 +512,54 @@ export default function Home() {
   React.useEffect(() => {
     try { localStorage.setItem("cashflow_rowRemarks", JSON.stringify(rowRemarks)); } catch { /* noop */ }
   }, [rowRemarks]);
+
+  // 마운트 시 memos.json 로드 (파일 우선, 없으면 localStorage 폴백)
+  React.useEffect(() => {
+    async function loadMemos() {
+      try {
+        const res = await fetch("/api/memos");
+        if (!res.ok) throw new Error("memos API failed");
+        const data = (await res.json()) as {
+          summaryMemos: Record<string, string>;
+          rowRemarks: Record<string, string>;
+        };
+        // rowRemarks: 파일 값 우선, 나머지는 localStorage 병합
+        const lsRemarks = (() => {
+          try {
+            const s = localStorage.getItem("cashflow_rowRemarks");
+            return s ? (JSON.parse(s) as Record<string, string>) : {};
+          } catch { return {}; }
+        })();
+        setRowRemarks({ ...lsRemarks, ...data.rowRemarks });
+
+        // summaryMemo: 파일에 현재 월 값이 있으면 우선 사용, 없으면 localStorage
+        const months = Object.keys(data.summaryMemos);
+        if (months.length > 0) {
+          // 가장 최근 월 키 사용
+          const latestKey = months[months.length - 1]!;
+          setMemoBaseMonth(latestKey);
+          const fileVal = data.summaryMemos[latestKey] ?? "";
+          if (fileVal) {
+            setSummaryMemo(fileVal);
+          } else {
+            const lsVal = (() => { try { return localStorage.getItem("cashflow_summaryMemo") ?? ""; } catch { return ""; } })();
+            setSummaryMemo(lsVal);
+          }
+        } else {
+          const lsVal = (() => { try { return localStorage.getItem("cashflow_summaryMemo") ?? ""; } catch { return ""; } })();
+          setSummaryMemo(lsVal);
+        }
+      } catch {
+        // API 실패 시 localStorage 폴백
+        try {
+          const s = localStorage.getItem("cashflow_rowRemarks");
+          if (s) setRowRemarks(JSON.parse(s) as Record<string, string>);
+          setSummaryMemo(localStorage.getItem("cashflow_summaryMemo") ?? "");
+        } catch { /* noop */ }
+      }
+    }
+    void loadMemos();
+  }, []);
 
   // 페이지 마운트 시 자동으로 CSV 데이터 로드
   React.useEffect(() => {
