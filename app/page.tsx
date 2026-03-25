@@ -95,7 +95,14 @@ function extractMonthNum(label: string): number | null {
 }
 
 function isSummaryRow(itemName: string): boolean {
-  return itemName.includes("소 계") || itemName.includes("합 계");
+  const n = normalizeLabel(itemName);
+  return (
+    n.includes("소계") ||
+    n.includes("합계") ||
+    itemName.trim() === "합계" ||
+    itemName.trim().startsWith("OC 차입금") ||
+    itemName.trim().startsWith("OC차입금")
+  );
 }
 
 function normalizeLabel(text: string): string {
