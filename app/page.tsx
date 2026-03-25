@@ -1033,7 +1033,7 @@ export default function Home() {
                                               isSelected ? "bg-amber-50" : ""
                                             }`}
                                           >
-                                            {v === null ? "-" : isYoY ? formatPercent(v) : formatNumberKR(v)}
+                                            {v === null ? "-" : isYoY ? formatPercent(v) : formatNumberKRInt(v)}
                                           </td>
                                         );
                                       })}
@@ -1098,7 +1098,7 @@ export default function Home() {
                                             ? "-"
                                             : isYoY
                                               ? formatPercent(subTotal)
-                                              : formatNumberKR(subTotal)}
+                                              : formatNumberKRInt(subTotal)}
                                         </td>
                                       );
                                     })}
