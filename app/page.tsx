@@ -1,8 +1,10 @@
 "use client";
 
 import React from "react";
-import * as XLSX from "xlsx";
 
+// ──────────────────────────────────────────────
+// Types
+// ──────────────────────────────────────────────
 type CashflowItem = {
   name: string;
   valuesByMonth: (number | null)[];
@@ -32,17 +34,25 @@ type ParsedCashflow = {
   rawRows: unknown[][];
 };
 
+type CsvApiRow = { name: string; values: (number | null)[] };
+type CsvApiResponse = { headers: string[]; rows: CsvApiRow[] };
+
+// ──────────────────────────────────────────────
+// Constants
+// ──────────────────────────────────────────────
 const BASE_CASH_SECTION = "기초현금";
 const KPI_KEYS = ["기말잔액(KRW)", "기말잔액(USD)", "기말잔액(CNY)"] as const;
 
+// ──────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────
 function parseNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "string") {
-    const s = value.trim();
+    const s = value.trim().replace(/,/g, "");
     if (!s) return null;
-    const normalized = s.replace(/,/g, "");
-    const n = Number(normalized);
+    const n = Number(s);
     return Number.isNaN(n) ? null : n;
   }
   return null;
@@ -54,13 +64,6 @@ function formatNumberKR(value: number) {
 
 function formatNumberKRInt(value: number) {
   return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 }).format(Math.round(value));
-}
-
-function safeCellToString(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value.trim();
-  if (typeof value === "number") return String(value);
-  return String(value).trim();
 }
 
 function isValidMonthLabel(text: string): boolean {
@@ -111,47 +114,18 @@ function isClosingBalanceCurrencyRow(itemName: string): boolean {
   );
 }
 
-function detectFirstValidHeaderRow(rows: unknown[][]): number {
-  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-    const row = rows[rowIdx] ?? [];
-    let monthCount = 0;
-    for (let col = 1; col < row.length; col++) {
-      if (isValidMonthLabel(safeCellToString(row[col]))) monthCount += 1;
-    }
-    if (monthCount > 0) return rowIdx;
-  }
-  return 0;
-}
+// ──────────────────────────────────────────────
+// CSV → ParsedCashflow 변환
+// ──────────────────────────────────────────────
+function parseCsvApiToCashflow(data: CsvApiResponse): ParsedCashflow {
+  const { headers, rows } = data;
 
-function parseMonthColumnsFromHeaderRow(headerRow: unknown[]): MonthColumn[] {
-  const months: MonthColumn[] = [];
-  for (let col = 1; col < headerRow.length; col++) {
-    const raw = safeCellToString(headerRow[col]);
-    if (isValidMonthLabel(raw)) {
-      months.push({ label: raw, colIndex: col, isMonthly: true });
-      continue;
-    }
-    if (isYearTotalLabel(raw)) {
-      months.push({ label: raw, colIndex: col, isMonthly: false });
-    }
-  }
-  return months;
-}
-
-function parseExcelToCashflow(buffer: ArrayBuffer): ParsedCashflow {
-  const workbook = XLSX.read(buffer, { type: "array" });
-  const firstSheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[firstSheetName];
-
-  const rows = XLSX.utils.sheet_to_json(worksheet, {
-    header: 1,
-    raw: false,
-    defval: null,
-  }) as unknown[][];
-
-  const headerRowIndex = detectFirstValidHeaderRow(rows);
-  const headerRow = rows[headerRowIndex] ?? [];
-  const months = parseMonthColumnsFromHeaderRow(headerRow);
+  // 월 컬럼 목록 구성 (colIndex = headers 배열 인덱스)
+  const months: MonthColumn[] = headers.map((label, idx) => ({
+    label,
+    colIndex: idx,
+    isMonthly: isValidMonthLabel(label),
+  })).filter((m) => m.isMonthly || isYearTotalLabel(m.label));
 
   const sections: Record<string, CashflowItem[]> = {};
   const sectionOrder: string[] = [];
@@ -169,12 +143,31 @@ function parseExcelToCashflow(buffer: ArrayBuffer): ParsedCashflow {
 
   let currentSection: string | null = null;
 
-  for (let rowIdx = headerRowIndex + 1; rowIdx < rows.length; rowIdx++) {
-    const row = rows[rowIdx] ?? [];
-    const itemName = safeCellToString(row[0]);
+  for (const row of rows) {
+    const itemName = row.name;
     if (!itemName) continue;
+    if (isSummaryRow(itemName)) continue;
 
-    if (itemName.includes("CASH FLOW")) {
+    // month 컬럼 순서에 맞춘 valuesByMonth
+    const valuesByMonth = months.map((m) => {
+      const rawVal = row.values[m.colIndex];
+      return parseNumber(rawVal);
+    });
+
+    // 섹션 헤더 감지 (①②③④ 포함된 행 또는 CASH FLOW 텍스트)
+    if (
+      /^[①②③④⑤]/.test(itemName) ||
+      itemName.includes("CASH FLOW")
+    ) {
+      // 기초현금 섹션
+      if (itemName.includes("기초현금")) {
+        currentSection = BASE_CASH_SECTION;
+        if (!sections[currentSection]) {
+          sections[currentSection] = [];
+        }
+        sections[currentSection].push({ name: itemName, valuesByMonth });
+        continue;
+      }
       currentSection = itemName;
       if (!sections[currentSection]) {
         sections[currentSection] = [];
@@ -182,10 +175,6 @@ function parseExcelToCashflow(buffer: ArrayBuffer): ParsedCashflow {
       }
       continue;
     }
-
-    if (isSummaryRow(itemName)) continue;
-
-    const valuesByMonth = months.map((month) => parseNumber(row[month.colIndex]));
 
     if (isClosingBalanceTotalRow(itemName)) {
       closingBalanceRows.push({ name: itemName, valuesByMonth });
@@ -204,24 +193,16 @@ function parseExcelToCashflow(buffer: ArrayBuffer): ParsedCashflow {
       continue;
     }
 
-    if (itemName.includes("기초현금")) {
-      if (!sections[BASE_CASH_SECTION]) {
-        sections[BASE_CASH_SECTION] = [];
-      }
-      sections[BASE_CASH_SECTION].push({ name: itemName, valuesByMonth });
-      continue;
-    }
-
     if (!currentSection) continue;
 
     if (!sections[currentSection]) {
       sections[currentSection] = [];
-      sectionOrder.push(currentSection);
+      if (!sectionOrder.includes(currentSection)) sectionOrder.push(currentSection);
     }
-
     sections[currentSection].push({ name: itemName, valuesByMonth });
   }
 
+  // 중복 제거
   for (const sectionName of Object.keys(sections)) {
     const seen = new Map<string, CashflowItem>();
     for (const item of sections[sectionName]) {
@@ -232,7 +213,7 @@ function parseExcelToCashflow(buffer: ArrayBuffer): ParsedCashflow {
 
   const normalizedOrder = [
     ...(sections[BASE_CASH_SECTION] ? [BASE_CASH_SECTION] : []),
-    ...sectionOrder.filter((sectionName) => sectionName !== BASE_CASH_SECTION),
+    ...sectionOrder.filter((s) => s !== BASE_CASH_SECTION),
   ];
 
   const sectionMapping: Record<string, string[]> = {};
@@ -241,11 +222,10 @@ function parseExcelToCashflow(buffer: ArrayBuffer): ParsedCashflow {
   }
 
   const closingBalanceSplit = {
-    total:
-      closingBalanceRows.find((row) => isClosingBalanceTotalRow(row.name)) ?? null,
-    krw: closingBalanceRows.find((row) => row.name.includes("기말잔액(KRW)")) ?? null,
-    usd: closingBalanceRows.find((row) => row.name.includes("기말잔액(USD)")) ?? null,
-    cny: closingBalanceRows.find((row) => row.name.includes("기말잔액(CNY)")) ?? null,
+    total: closingBalanceRows.find((r) => isClosingBalanceTotalRow(r.name)) ?? null,
+    krw: closingBalanceRows.find((r) => r.name.includes("기말잔액(KRW)")) ?? null,
+    usd: closingBalanceRows.find((r) => r.name.includes("기말잔액(USD)")) ?? null,
+    cny: closingBalanceRows.find((r) => r.name.includes("기말잔액(CNY)")) ?? null,
   };
 
   return {
@@ -257,11 +237,14 @@ function parseExcelToCashflow(buffer: ArrayBuffer): ParsedCashflow {
     closingBalanceRows,
     closingBalanceSplit,
     sectionMapping,
-    headerRowIndex,
-    rawRows: rows,
+    headerRowIndex: 0,
+    rawRows: [],
   };
 }
 
+// ──────────────────────────────────────────────
+// Computation helpers (동일 유지)
+// ──────────────────────────────────────────────
 function sumSectionValues(items: CashflowItem[], monthIndex: number): number | null {
   let sum = 0;
   let count = 0;
@@ -340,7 +323,7 @@ function getTopSummaryRows(
   selectedMonthColIndex: number | null,
 ): { rows: SummaryRow[]; labelPrev: string; labelCurr: string } {
   const rows: SummaryRow[] = [];
-  if (!selectedMonthColIndex || months.length === 0) {
+  if (selectedMonthColIndex === null || months.length === 0) {
     return { rows, labelPrev: "2025년", labelCurr: "2026년" };
   }
 
@@ -362,7 +345,6 @@ function getTopSummaryRows(
   }
 
   const labelPrev = formatYearMonthLabel(colPrev.label);
-
   const colPrevMeta = { ...colPrev } as ColWithMeta;
   const colCurrMeta = { ...colCurr } as ColWithMeta;
 
@@ -444,11 +426,7 @@ function getMonthlyValues(
     const financing = finSection ? sumSectionValues(finSection.items, monthIdx) : 0;
     let ending = closingSection ? sumSectionValues(closingSection.items, monthIdx) : null;
     if (ending === null) {
-      const o = opening ?? 0;
-      const op = operating ?? 0;
-      const inv = investing ?? 0;
-      const fin = financing ?? 0;
-      ending = o + op + inv + fin;
+      ending = (opening ?? 0) + (operating ?? 0) + (investing ?? 0) + (financing ?? 0);
     }
     result.push({
       monthLabel: formatYearMonthLabel(month.label),
@@ -469,16 +447,12 @@ function simulateOperatingCFCascade(
   multiplier: number,
   months: MonthColumn[],
 ): SimulationResult[] {
-  const selectedMonth = months.find((m) => m.colIndex === selectedMonthColIndex);
-  if (!selectedMonth) return [];
-
   const selectedIdx = monthlyData.findIndex(
     (r) => months[r.monthIdx]?.colIndex === selectedMonthColIndex,
   );
   if (selectedIdx < 0) return [];
 
   const results: SimulationResult[] = [];
-
   for (let i = 0; i < monthlyData.length; i++) {
     const row = monthlyData[i];
     let simOpening: number;
@@ -511,7 +485,11 @@ function simulateOperatingCFCascade(
   return results;
 }
 
+// ──────────────────────────────────────────────
+// Main Component
+// ──────────────────────────────────────────────
 export default function Home() {
+  const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [parsed, setParsed] = React.useState<ParsedCashflow | null>(null);
   const [collapsedSections, setCollapsedSections] = React.useState<Record<string, boolean>>({});
@@ -524,39 +502,53 @@ export default function Home() {
   const [summaryMemo, setSummaryMemo] = React.useState("");
   const [isSummaryMemoEditMode, setIsSummaryMemoEditMode] = React.useState(false);
 
-  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // 페이지 마운트 시 자동으로 CSV 데이터 로드
+  React.useEffect(() => {
+    let cancelled = false;
 
-    setError(null);
-    setParsed(null);
-
-    try {
-      const buffer = await file.arrayBuffer();
-      const nextParsed = parseExcelToCashflow(buffer);
-      setParsed(nextParsed);
-      const months26 = nextParsed.months.filter((m) => m.isMonthly && /^26년\s/.test(m.label));
-      const latestMonthly =
-        months26.length > 0
-          ? months26[months26.length - 1]
-          : nextParsed.months[nextParsed.months.length - 1] ?? null;
-      const colIdx = latestMonthly?.colIndex ?? null;
-      setSelectedKpiMonthColIndex(colIdx);
-      setSimSelectedMonthColIndex(colIdx);
-      setCollapsedSections((prev) => {
-        const next: Record<string, boolean> = {};
-        for (const sectionName of nextParsed.sectionOrder) {
-          next[sectionName] = prev[sectionName] ?? false;
+    async function loadData() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/cashflow");
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(body.error ?? `서버 오류: ${res.status}`);
         }
-        next["조달 후 기말잔액"] = prev["조달 후 기말잔액"] ?? false;
-        return next;
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "엑셀을 읽는 중 오류가 발생했습니다.");
-    } finally {
-      e.target.value = "";
+        const data = (await res.json()) as CsvApiResponse;
+        if (cancelled) return;
+
+        const nextParsed = parseCsvApiToCashflow(data);
+        setParsed(nextParsed);
+
+        const months26 = nextParsed.months.filter((m) => m.isMonthly && /^26년\s/.test(m.label));
+        const latestMonthly =
+          months26.length > 0
+            ? months26[months26.length - 1]
+            : nextParsed.months[nextParsed.months.length - 1] ?? null;
+        const colIdx = latestMonthly?.colIndex ?? null;
+        setSelectedKpiMonthColIndex(colIdx);
+        setSimSelectedMonthColIndex(colIdx);
+        setCollapsedSections(() => {
+          const next: Record<string, boolean> = {};
+          for (const sectionName of nextParsed.sectionOrder) {
+            next[sectionName] = false;
+          }
+          next["조달 후 기말잔액"] = false;
+          return next;
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "데이터를 불러오는 중 오류가 발생했습니다.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-  };
+
+    void loadData();
+    return () => { cancelled = true; };
+  }, []);
 
   const months = parsed?.months ?? [];
   const monthLabels = months.map((m) => m.label);
@@ -646,6 +638,7 @@ export default function Home() {
 
   const summaryData = React.useMemo(
     () => getTopSummaryRows(sectionRows, months, selectedKpiMonthColIndex),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [sectionRows, months, selectedKpiMonthColIndex],
   );
 
@@ -653,21 +646,26 @@ export default function Home() {
 
   const monthlySimData = React.useMemo(
     () => getMonthlyValues(sectionRows, months),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [sectionRows, months],
   );
 
   const simulationResults = React.useMemo(() => {
-    if (!simMonthColIndex || simMultiplier === 100) return monthlySimData.map((r) => ({
-      ...r,
-      simOpeningCash: r.openingCash,
-      simOperatingCF: r.operatingCF,
-      simEndingCash: r.endingCash,
-      diff: 0,
-      isSimulated: false,
-    }));
+    if (!simMonthColIndex || simMultiplier === 100)
+      return monthlySimData.map((r) => ({
+        ...r,
+        simOpeningCash: r.openingCash,
+        simOperatingCF: r.operatingCF,
+        simEndingCash: r.endingCash,
+        diff: 0,
+        isSimulated: false,
+      }));
     return simulateOperatingCFCascade(monthlySimData, simMonthColIndex, simMultiplier / 100, months);
   }, [monthlySimData, simMonthColIndex, simMultiplier, months]);
 
+  // ──────────────────────────────────────────────
+  // Render
+  // ──────────────────────────────────────────────
   return (
     <div className="min-h-full bg-zinc-50 font-sans">
       <main className="mx-auto w-full max-w-[92rem] px-3 py-6 sm:px-4 lg:px-6">
@@ -680,22 +678,22 @@ export default function Home() {
           </p>
         </header>
 
-        <section className="mb-4">
-          <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
-            <label className="block">
-              <span className="sr-only">엑셀 파일 업로드</span>
-              <input
-                className="block w-full text-sm text-zinc-700 file:mr-4 file:rounded-full file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-zinc-800"
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={onFileChange}
-              />
-            </label>
-            {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
-          </div>
-        </section>
+        {/* 로딩 상태 */}
+        {loading && (
+          <section className="mt-10 rounded-2xl border border-zinc-200 bg-white p-8 text-center">
+            <div className="text-sm text-zinc-500">데이터를 불러오는 중...</div>
+          </section>
+        )}
 
-        {parsed ? (
+        {/* 오류 상태 */}
+        {!loading && error && (
+          <section className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
+            <p className="text-sm text-red-700">{error}</p>
+          </section>
+        )}
+
+        {/* 데이터 로드 완료 */}
+        {!loading && parsed && (
           <>
             <section className="mb-5">
               <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -739,12 +737,14 @@ export default function Home() {
                   </div>
                 ))}
                 <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-                  <div className="text-sm font-medium text-zinc-600">업로드 정보</div>
+                  <div className="text-sm font-medium text-zinc-600">데이터 정보</div>
                   <div className="mt-2 text-base text-zinc-900">
-                    {monthLabels.length > 0 ? `${monthLabels.length}개 월 데이터` : "월 헤더를 찾지 못했습니다."}
+                    {monthLabels.length > 0
+                      ? `${monthLabels.length}개 월 데이터`
+                      : "월 헤더를 찾지 못했습니다."}
                   </div>
                   <div className="mt-2 text-xs text-zinc-500">
-                    헤더 행: {parsed.headerRowIndex + 1}번째 행
+                    data/2026cashflow_raw.csv
                   </div>
                 </div>
               </div>
@@ -832,9 +832,7 @@ export default function Home() {
                       <textarea
                         value={summaryMemo}
                         onChange={(e) => setSummaryMemo(e.target.value)}
-                        placeholder={`• 주요 변동 요약
-• 검토 사항
-• 특이 사항`}
+                        placeholder={`• 주요 변동 요약\n• 검토 사항\n• 특이 사항`}
                         rows={6}
                         className="mt-1.5 w-full resize-y rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-300"
                       />
@@ -914,7 +912,7 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sectionRows.map((section, sectionIdx) => {
+                      {sectionRows.map((section) => {
                         const isCollapsed = collapsedSections[section.sectionName] ?? false;
                         const headerBg =
                           section.sectionName === "기초현금"
@@ -1054,7 +1052,7 @@ export default function Home() {
                                             className="w-full min-w-[8rem] rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-xs text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-300"
                                           />
                                         ) : (
-                                          <span className="block min-h-[1.75rem] min-w-[8rem] text-xs text-zinc-600 empty:italic empty:text-zinc-400">
+                                          <span className="block min-h-[1.75rem] min-w-[8rem] text-xs text-zinc-600">
                                             {rowRemarks[`${section.sectionName}-${item.name}`] || "—"}
                                           </span>
                                         )}
@@ -1119,7 +1117,7 @@ export default function Home() {
                                           className="w-full min-w-[8rem] rounded border border-zinc-200 bg-white px-2 py-1.5 text-xs text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-300"
                                         />
                                       ) : (
-                                        <span className="block min-h-[1.75rem] min-w-[8rem] text-xs text-zinc-600 empty:italic empty:text-zinc-400">
+                                        <span className="block min-h-[1.75rem] min-w-[8rem] text-xs text-zinc-600">
                                           {rowRemarks[`${section.sectionName}-소계`] || "—"}
                                         </span>
                                       )}
@@ -1283,14 +1281,9 @@ export default function Home() {
                     </tbody>
                   </table>
                 </div>
-
               </div>
             </section>
           </>
-        ) : (
-          <section className="mt-10 rounded-2xl border border-dashed border-zinc-300 bg-white p-8 text-center">
-            <div className="text-sm text-zinc-600">먼저 엑셀 파일을 업로드하세요.</div>
-          </section>
         )}
       </main>
     </div>
