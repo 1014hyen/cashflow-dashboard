@@ -200,6 +200,14 @@ function parseCsvApiToCashflow(data: CsvApiResponse): ParsedCashflow {
       continue;
     }
 
+    // 투자금융상품은 별도 섹션으로 분리해 조달 후 기말잔액 아래에 배치
+    if (normalizeLabel(itemName).includes("투자금융상품")) {
+      const SEC = "투자금융상품";
+      if (!sections[SEC]) sections[SEC] = [];
+      sections[SEC].push({ name: itemName, valuesByMonth });
+      continue;
+    }
+
     if (!currentSection) continue;
 
     if (!sections[currentSection]) {
@@ -221,6 +229,8 @@ function parseCsvApiToCashflow(data: CsvApiResponse): ParsedCashflow {
   const normalizedOrder = [
     ...(sections[BASE_CASH_SECTION] ? [BASE_CASH_SECTION] : []),
     ...sectionOrder.filter((s) => s !== BASE_CASH_SECTION),
+    // 투자금융상품은 조달 후 기말잔액 아래에 고정
+    ...(sections["투자금융상품"] ? ["투자금융상품"] : []),
   ];
 
   const sectionMapping: Record<string, string[]> = {};
