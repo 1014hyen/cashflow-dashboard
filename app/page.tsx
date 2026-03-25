@@ -777,7 +777,7 @@ export default function Home() {
                       <tbody>
                         {summaryData.rows.map((r) => {
                           const diffSign = r.diff != null && r.diff >= 0 ? "+" : "";
-                          const diffStr = r.diff != null ? `${diffSign}${formatNumberKR(r.diff)}` : "-";
+                          const diffStr = r.diff != null ? `${diffSign}${formatNumberKRInt(r.diff)}` : "-";
                           const isNegative = r.diff != null && r.diff < 0;
                           const rowBg =
                             r.label === "기초현금"
@@ -796,10 +796,10 @@ export default function Home() {
                                 {r.label}
                               </td>
                               <td className={`px-4 py-2 text-right text-zinc-900 ${rowBg} ${fontWeight}`}>
-                                {r.vPrev != null ? formatNumberKR(r.vPrev) : "-"}
+                                {r.vPrev != null ? formatNumberKRInt(r.vPrev) : "-"}
                               </td>
                               <td className={`px-4 py-2 text-right text-zinc-900 ${rowBg} ${fontWeight}`}>
-                                {r.vCurr != null ? formatNumberKR(r.vCurr) : "-"}
+                                {r.vCurr != null ? formatNumberKRInt(r.vCurr) : "-"}
                               </td>
                               <td
                                 className={`px-4 py-2 text-right ${rowBg} ${fontWeight} ${
