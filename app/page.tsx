@@ -853,12 +853,13 @@ export default function Home() {
               <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold text-zinc-900">통합 캐시플로우 표</h2>
+                    <h2 className="text-lg font-semibold text-zinc-900">2026년 월별 CASH FLOW</h2>
                     <p className="mt-1 text-sm text-zinc-600">
                       섹션 행을 클릭하면 접기/펼치기가 됩니다. (색상으로 섹션 구분)
                     </p>
                   </div>
-                  <div className="flex shrink-0 flex-wrap gap-2">
+                  <div className="flex shrink-0 flex-wrap items-center gap-3">
+                    <span className="text-xs text-zinc-500">(단위: 백만원)</span>
                     <button
                       type="button"
                       onClick={() => setIsRemarksEditMode((prev) => !prev)}
@@ -1139,9 +1140,12 @@ export default function Home() {
 
             <section className="mb-5">
               <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-                <h2 className="text-base font-semibold text-zinc-900 sm:text-lg">
-                  영업 CASH FLOW 민감도 시뮬레이션
-                </h2>
+                <div className="flex items-start justify-between">
+                  <h2 className="text-base font-semibold text-zinc-900 sm:text-lg">
+                    영업 CASH FLOW 민감도 시뮬레이션
+                  </h2>
+                  <span className="text-xs text-zinc-500">(단위: 백만원)</span>
+                </div>
                 <p className="mt-1 text-xs text-zinc-600 sm:text-sm">
                   기준 월 선택 후 영업 CASH FLOW 배율을 적용하면, 해당 월 이후의 조달 후 기말잔액이 연쇄 반영됩니다.
                 </p>
