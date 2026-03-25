@@ -63,7 +63,7 @@ function formatNumberKR(value: number) {
 }
 
 function formatNumberKRInt(value: number) {
-  return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 }).format(Math.round(value));
+  return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 }).format(Math.trunc(value));
 }
 
 function isValidMonthLabel(text: string): boolean {
