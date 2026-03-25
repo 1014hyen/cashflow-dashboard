@@ -521,11 +521,25 @@ export default function Home() {
         const nextParsed = parseCsvApiToCashflow(data);
         setParsed(nextParsed);
 
-        const months26 = nextParsed.months.filter((m) => m.isMonthly && /^26년\s/.test(m.label));
+        const now = new Date();
+        const currentYY = String(now.getFullYear()).slice(-2);
+        const currentMM = now.getMonth() + 1;
+
+        const allMonthly = nextParsed.months.filter((m) => m.isMonthly);
+        const months26 = allMonthly.filter((m) => /^26년\s/.test(m.label));
+
+        // 오늘 날짜 기준 해당 월 컬럼 찾기 (예: "26년 3월")
+        const todayMonth = allMonthly.find((m) => {
+          const match = m.label.match(/^(\d{2})년\s*(\d{1,2})월$/);
+          return match && match[1] === currentYY && parseInt(match[2], 10) === currentMM;
+        });
+
+        // 해당 월이 없으면 같은 연도의 가장 마지막 월, 그것도 없으면 전체 마지막 월
         const latestMonthly =
-          months26.length > 0
+          todayMonth ??
+          (months26.length > 0
             ? months26[months26.length - 1]
-            : nextParsed.months[nextParsed.months.length - 1] ?? null;
+            : allMonthly[allMonthly.length - 1] ?? null);
         const colIdx = latestMonthly?.colIndex ?? null;
         setSelectedKpiMonthColIndex(colIdx);
         setSimSelectedMonthColIndex(colIdx);
