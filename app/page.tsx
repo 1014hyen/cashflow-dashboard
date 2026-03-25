@@ -814,7 +814,7 @@ export default function Home() {
                       </tbody>
                     </table>
                   </div>
-                  <div className="min-w-0 shrink-0 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3 lg:w-80">
+                  <div className="min-w-0 shrink-0 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3 lg:w-[28rem]">
                     <div className="flex items-center justify-between">
                       <label className="block text-xs font-medium text-zinc-600">
                         {summaryData.labelCurr} 캐시플로우 보고사항
@@ -836,11 +836,11 @@ export default function Home() {
                         value={summaryMemo}
                         onChange={(e) => setSummaryMemo(e.target.value)}
                         placeholder={`• 주요 변동 요약\n• 검토 사항\n• 특이 사항`}
-                        rows={6}
+                        rows={10}
                         className="mt-1.5 w-full resize-y rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-300"
                       />
                     ) : (
-                      <div className="mt-1.5 min-h-[8rem] whitespace-pre-wrap rounded border border-transparent px-3 py-2 text-sm text-zinc-700">
+                      <div className="mt-1.5 min-h-[14rem] whitespace-pre-wrap rounded border border-transparent px-3 py-2 text-sm text-zinc-700">
                         {summaryMemo || "—"}
                       </div>
                     )}
