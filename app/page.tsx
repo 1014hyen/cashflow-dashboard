@@ -495,12 +495,29 @@ export default function Home() {
   const [collapsedSections, setCollapsedSections] = React.useState<Record<string, boolean>>({});
   const [selectedKpiMonthColIndex, setSelectedKpiMonthColIndex] = React.useState<number | null>(null);
   const [monthlyDataExpanded, setMonthlyDataExpanded] = React.useState(true);
-  const [rowRemarks, setRowRemarks] = React.useState<Record<string, string>>({});
+  const [rowRemarks, setRowRemarks] = React.useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem("cashflow_rowRemarks");
+      return saved ? (JSON.parse(saved) as Record<string, string>) : {};
+    } catch { return {}; }
+  });
   const [isRemarksEditMode, setIsRemarksEditMode] = React.useState(false);
   const [simSelectedMonthColIndex, setSimSelectedMonthColIndex] = React.useState<number | null>(null);
   const [simMultiplier, setSimMultiplier] = React.useState(100);
-  const [summaryMemo, setSummaryMemo] = React.useState("");
+  const [summaryMemo, setSummaryMemo] = React.useState(() => {
+    try { return localStorage.getItem("cashflow_summaryMemo") ?? ""; }
+    catch { return ""; }
+  });
   const [isSummaryMemoEditMode, setIsSummaryMemoEditMode] = React.useState(false);
+
+  // 메모 변경 시 localStorage에 저장
+  React.useEffect(() => {
+    try { localStorage.setItem("cashflow_summaryMemo", summaryMemo); } catch { /* noop */ }
+  }, [summaryMemo]);
+
+  React.useEffect(() => {
+    try { localStorage.setItem("cashflow_rowRemarks", JSON.stringify(rowRemarks)); } catch { /* noop */ }
+  }, [rowRemarks]);
 
   // 페이지 마운트 시 자동으로 CSV 데이터 로드
   React.useEffect(() => {
