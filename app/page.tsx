@@ -741,7 +741,7 @@ export default function Home() {
                   >
                     <div className="text-sm font-medium text-zinc-600">{kpi.key}</div>
                     <div className="mt-2 text-2xl font-semibold tracking-tight text-zinc-900">
-                      {kpi.value === null ? "-" : formatNumberKR(kpi.value)}
+                      {kpi.value === null ? "-" : formatNumberKRInt(kpi.value)}
                     </div>
                     <div className="mt-1 text-xs text-zinc-500">
                       {selectedKpiMonthLabel
@@ -750,17 +750,6 @@ export default function Home() {
                     </div>
                   </div>
                 ))}
-                <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-                  <div className="text-sm font-medium text-zinc-600">데이터 정보</div>
-                  <div className="mt-2 text-base text-zinc-900">
-                    {monthLabels.length > 0
-                      ? `${monthLabels.length}개 월 데이터`
-                      : "월 헤더를 찾지 못했습니다."}
-                  </div>
-                  <div className="mt-2 text-xs text-zinc-500">
-                    data/2026cashflow_raw.csv
-                  </div>
-                </div>
               </div>
             </section>
 
