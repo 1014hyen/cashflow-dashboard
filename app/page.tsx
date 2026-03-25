@@ -428,13 +428,17 @@ function getMonthlyValues(
   const finSection = sectionRows.find((s) => s.sectionName.includes("조달 CASH FLOW"));
   const closingSection = sectionRows.find((s) => s.sectionName === "조달 후 기말잔액");
 
+  // 조달후 기말잔액: 총계 행(조달후기말잔액) 하나만 사용 — KRW/USD/CNY 행과 중복 합산 방지
+  const closingTotalItem = closingSection?.items.find((i) => isClosingBalanceTotalRow(i.name)) ?? null;
+
   for (const month of months26) {
     const monthIdx = months.findIndex((m) => m.colIndex === month.colIndex);
     const opening = baseSection ? sumSectionValues(baseSection.items, monthIdx) : 0;
     const operating = opSection ? sumSectionValues(opSection.items, monthIdx) : 0;
     const investing = invSection ? sumSectionValues(invSection.items, monthIdx) : 0;
     const financing = finSection ? sumSectionValues(finSection.items, monthIdx) : 0;
-    let ending = closingSection ? sumSectionValues(closingSection.items, monthIdx) : null;
+    // 총계 행 직접 사용, 없으면 공식으로 계산
+    let ending = closingTotalItem ? (closingTotalItem.valuesByMonth[monthIdx] ?? null) : null;
     if (ending === null) {
       ending = (opening ?? 0) + (operating ?? 0) + (investing ?? 0) + (financing ?? 0);
     }
